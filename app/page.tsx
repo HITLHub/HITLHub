@@ -11,7 +11,7 @@ export default async function Home() {
   const userSession = await auth.api.getSession({ headers: await headers() });
   if (!userSession) redirect("/sign-in");
   const sessions = await listSessions(userSession.user.id);
-  return <main className="app-shell">
+  return <main className="min-h-svh bg-muted/25">
     <ConsoleNav active="inbox" user={{ name: userSession.user.name, email: userSession.user.email }} />
     <SessionConsole initial={sessions} />
   </main>;

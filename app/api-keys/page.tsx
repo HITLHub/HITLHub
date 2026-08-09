@@ -11,7 +11,7 @@ export default async function ApiKeysPage() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/sign-in");
   const keys = await listApiKeys(session.user.id);
-  return <main className="app-shell">
+  return <main className="min-h-svh bg-muted/25">
     <ConsoleNav active="keys" user={{ name: session.user.name, email: session.user.email }} />
     <ApiKeysManager initial={keys} />
   </main>;

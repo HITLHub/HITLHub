@@ -3,6 +3,9 @@
 import { authClient } from "@/lib/auth-client";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -25,19 +28,15 @@ export default function SignInPage() {
     router.push("/"); router.refresh();
   }
 
-  return <main className="auth-shell">
-    <section className="auth-card">
-      <div className="brand-mark">∞</div>
-      <p className="eyebrow">HITLHUB</p>
-      <h1>Welcome back</h1>
-      <p className="muted">The human decision layer for AI agents.</p>
-      <form onSubmit={submit}>
-        <label>Email<input name="email" type="email" required placeholder="you@company.com" /></label>
-        <label>Password<input name="password" type="password" required minLength={8} placeholder="At least 8 characters" /></label>
-        {error && <p className="error">{error}</p>}
-        <button className="primary" disabled={loading}>{loading ? "Please wait…" : "Sign in"}</button>
-      </form>
-      <p className="signin-note">Accounts are invitation-only.</p>
-    </section>
+  return <main className="grid min-h-svh place-items-center bg-muted/30 px-4 py-8">
+    <Card className="w-full max-w-md shadow-xl shadow-foreground/5">
+      <CardHeader><div className="mb-4 grid size-11 place-items-center rounded-xl bg-foreground text-2xl text-background">∞</div><p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">HITLHub</p><CardTitle className="text-2xl">Welcome back</CardTitle><CardDescription>The human decision layer for AI agents.</CardDescription></CardHeader>
+      <CardContent><form className="space-y-4" onSubmit={submit}>
+        <div className="space-y-2"><label className="text-sm font-medium" htmlFor="email">Email</label><Input id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" /></div>
+        <div className="space-y-2"><label className="text-sm font-medium" htmlFor="password">Password</label><Input id="password" name="password" type="password" autoComplete="current-password" required minLength={8} placeholder="At least 8 characters" /></div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button className="w-full" size="lg" disabled={loading}>{loading ? "Please wait…" : "Sign in"}</Button>
+      </form><p className="mt-5 text-center text-xs text-muted-foreground">Accounts are invitation-only.</p></CardContent>
+    </Card>
   </main>;
 }

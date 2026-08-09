@@ -2,6 +2,9 @@
 
 import { authClient } from "@/lib/auth-client";
 import { useState } from "react";
+import { Check, Infinity as InfinityIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ConsentPage() {
   const [error, setError] = useState("");
@@ -21,21 +24,12 @@ export default function ConsentPage() {
     if (result.data?.url) window.location.href = result.data.url;
   }
 
-  return <main className="auth-shell">
-    <section className="auth-card consent-card">
-      <div className="brand-mark">∞</div>
-      <p className="eyebrow">OAUTH AUTHORIZATION</p>
-      <h1>Connect to HITLHub?</h1>
-      <p className="muted"><code>{clientId}</code> is requesting permission to use HITLHub on your behalf.</p>
-      <div className="scope-list">
-        {scopes.map((scope) => <div key={scope}><span>✓</span><div><strong>{scope}</strong><small>{scopeDescription(scope)}</small></div></div>)}
-      </div>
-      {error && <p className="error">{error}</p>}
-      <div className="consent-actions">
-        <button className="secondary" disabled={loading} onClick={() => decide(false)}>Deny</button>
-        <button className="primary" disabled={loading} onClick={() => decide(true)}>{loading ? "Connecting…" : "Allow access"}</button>
-      </div>
-    </section>
+  return <main className="grid min-h-svh place-items-center bg-muted/30 px-4 py-8">
+    <Card className="w-full max-w-md shadow-xl shadow-foreground/5"><CardHeader><div className="mb-4 grid size-11 place-items-center rounded-xl bg-foreground text-background"><InfinityIcon /></div><p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">OAuth authorization</p><CardTitle className="text-2xl">Connect to HITLHub?</CardTitle><CardDescription><code className="break-all text-foreground">{clientId}</code> is requesting permission to use HITLHub on your behalf.</CardDescription></CardHeader><CardContent>
+      <div className="mb-5 divide-y rounded-xl border">{scopes.map((scope) => <div className="flex gap-3 p-3" key={scope}><span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700"><Check className="size-3" /></span><div><p className="text-sm font-medium">{scope}</p><p className="mt-0.5 text-xs text-muted-foreground">{scopeDescription(scope)}</p></div></div>)}</div>
+      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+      <div className="grid grid-cols-2 gap-2"><Button variant="outline" disabled={loading} onClick={() => decide(false)}>Deny</Button><Button disabled={loading} onClick={() => decide(true)}>{loading ? "Connecting…" : "Allow access"}</Button></div>
+    </CardContent></Card>
   </main>;
 }
 
