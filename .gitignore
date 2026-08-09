@@ -1,0 +1,10 @@
+node_modules
+.next
+.vercel
+.env
+.env.local
+npm-debug.log*
+*.tsbuildinfo
+AGENTS.md
+CLAUDE.md
+.env*
