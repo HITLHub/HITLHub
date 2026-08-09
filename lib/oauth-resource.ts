@@ -2,6 +2,7 @@ import { createAuthClient } from "better-auth/client";
 import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import { auth } from "@/lib/auth";
 import { MCP_RESOURCE, MCP_RESOURCE_METADATA, type McpScope } from "@/lib/oauth-config";
+import { API_KEY_PREFIX, verifyApiKey } from "@/lib/api-keys";
 
 const resourceClient = createAuthClient({
   plugins: [oauthProviderResourceClient(auth)],
@@ -11,6 +12,9 @@ export type McpPrincipal = {
   userId: string;
   clientId: string;
   scopes: string[];
+  authMethod: "oauth" | "api_key";
+  apiKeyId?: string;
+  credentialName?: string;
 };
 
 export function bearerChallenge(scope?: McpScope) {
@@ -20,6 +24,20 @@ export function bearerChallenge(scope?: McpScope) {
 }
 
 export async function verifyMcpRequest(request: Request, requiredScope?: McpScope): Promise<McpPrincipal> {
+  const authorization = request.headers.get("authorization") ?? "";
+  const secret = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (secret.startsWith(API_KEY_PREFIX)) {
+    const apiKey = await verifyApiKey(secret, requiredScope);
+    return {
+      userId: apiKey.owner_user_id,
+      clientId: `api-key:${apiKey.id}`,
+      scopes: apiKey.scopes,
+      authMethod: "api_key",
+      apiKeyId: apiKey.id,
+      credentialName: apiKey.name,
+    };
+  }
+
   const payload = await resourceClient.verifyAccessTokenRequest(request, {
     verifyOptions: { audience: MCP_RESOURCE },
     requiredScopes: requiredScope ? [requiredScope] : undefined,
@@ -34,5 +52,5 @@ export async function verifyMcpRequest(request: Request, requiredScope?: McpScop
     : Array.isArray(payload.scopes) ? payload.scopes.filter((value): value is string => typeof value === "string") : [];
 
   if (!userId || !clientId) throw new Error("Access token is missing subject or client identity");
-  return { userId, clientId, scopes };
+  return { userId, clientId, scopes, authMethod: "oauth" };
 }

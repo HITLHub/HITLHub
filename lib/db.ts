@@ -30,6 +30,8 @@ export type HitlSession = {
   answered_by: string | null;
   oauth_client_id: string | null;
   requested_by_user_id: string | null;
+  api_key_id: string | null;
+  auth_method: "oauth" | "api_key" | null;
 };
 
 export async function ensureHitlSchema() {
@@ -54,10 +56,26 @@ export async function ensureHitlSchema() {
       created_at timestamptz NOT NULL DEFAULT now(),
       last_used_at timestamptz NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS api_key (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_user_id text NOT NULL,
+      name text NOT NULL,
+      key_prefix text NOT NULL,
+      secret_hash text UNIQUE NOT NULL,
+      scopes jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz,
+      revoked_at timestamptz
+    );
     ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS oauth_client_id text;
     ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS requested_by_user_id text;
+    ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS api_key_id uuid;
+    ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS auth_method text;
     CREATE INDEX IF NOT EXISTS hitl_session_created_idx ON hitl_session (created_at DESC);
     CREATE INDEX IF NOT EXISTS hitl_session_oauth_client_idx ON hitl_session (oauth_client_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS hitl_session_owner_idx ON hitl_session (requested_by_user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS api_key_owner_idx ON api_key (owner_user_id, created_at DESC);
   `);
 }
 
@@ -79,9 +97,12 @@ export async function expireSessions() {
   await pool.query(`UPDATE hitl_session SET status = 'expired' WHERE status = 'waiting' AND expires_at <= now()`);
 }
 
-export async function listSessions(): Promise<HitlSession[]> {
+export async function listSessions(ownerUserId: string): Promise<HitlSession[]> {
   await ensureHitlSchema();
   await expireSessions();
-  const result = await pool.query<HitlSession>(`SELECT * FROM hitl_session ORDER BY created_at DESC LIMIT 100`);
+  const result = await pool.query<HitlSession>(
+    `SELECT * FROM hitl_session WHERE requested_by_user_id = $1 ORDER BY created_at DESC LIMIT 100`,
+    [ownerUserId],
+  );
   return result.rows;
 }

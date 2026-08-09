@@ -16,9 +16,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const result = await pool.query(
     `UPDATE hitl_session
      SET status = 'answered', answer = $1, answered_at = now(), answered_by = $2
-     WHERE id = $3 AND status = 'waiting' AND expires_at > now()
+     WHERE id = $3 AND requested_by_user_id = $4 AND status = 'waiting' AND expires_at > now()
      RETURNING *`,
-    [body.answer.trim(), userSession.user.email, id],
+    [body.answer.trim(), userSession.user.email, id, userSession.user.id],
   );
   if (!result.rowCount) return Response.json({ error: "Session is no longer waiting" }, { status: 409 });
   return Response.json({ session: result.rows[0] });

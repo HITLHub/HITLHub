@@ -52,7 +52,9 @@ function toolResult(value: unknown, isError = false) {
 async function callTool(name: unknown, args: Record<string, unknown>, principal: McpPrincipal) {
   await ensureHitlSchema();
   await expireSessions();
-  const integration = await resolveIntegration(principal.clientId);
+  const integration = principal.authMethod === "oauth"
+    ? await resolveIntegration(principal.clientId)
+    : { name: principal.credentialName ?? "API key agent", oauth_client_id: principal.clientId };
   if (name === "create_session") {
     const question = typeof args.question === "string" ? args.question.trim() : "";
     const options = Array.isArray(args.options) ? args.options.filter((v): v is string => typeof v === "string" && !!v.trim()) : [];
@@ -61,21 +63,29 @@ async function callTool(name: unknown, args: Record<string, unknown>, principal:
       return toolResult({ error: "question, at least two options, and expires_in_seconds (30-86400) are required" }, true);
     }
     const result = await pool.query(
-      `INSERT INTO hitl_session (integration, question, options, expires_at, oauth_client_id, requested_by_user_id)
-       VALUES ($1, $2, $3::jsonb, now() + ($4 * interval '1 second'), $5, $6)
+      `INSERT INTO hitl_session (integration, question, options, expires_at, oauth_client_id, requested_by_user_id, api_key_id, auth_method)
+       VALUES ($1, $2, $3::jsonb, now() + ($4 * interval '1 second'), $5, $6, $7, $8)
        RETURNING *`,
-      [integration.name, question, JSON.stringify(options), seconds, principal.clientId, principal.userId],
+      [integration.name, question, JSON.stringify(options), seconds, principal.authMethod === "oauth" ? principal.clientId : null, principal.userId, principal.apiKeyId ?? null, principal.authMethod],
     );
     return toolResult(result.rows[0]);
   }
   if (name === "get_session") {
-    const result = await pool.query(`SELECT * FROM hitl_session WHERE id = $1 AND oauth_client_id = $2`, [args.session_id, principal.clientId]);
+    const result = await pool.query(
+      `SELECT * FROM hitl_session
+       WHERE id = $1 AND requested_by_user_id = $2
+         AND (($3 = 'api_key' AND api_key_id = $4) OR ($3 = 'oauth' AND oauth_client_id = $5))`,
+      [args.session_id, principal.userId, principal.authMethod, principal.apiKeyId ?? null, principal.clientId],
+    );
     return result.rowCount ? toolResult(result.rows[0]) : toolResult({ error: "Session not found" }, true);
   }
   if (name === "cancel_session") {
     const result = await pool.query(
-      `UPDATE hitl_session SET status = 'cancelled' WHERE id = $1 AND oauth_client_id = $2 AND status = 'waiting' RETURNING *`,
-      [args.session_id, principal.clientId],
+      `UPDATE hitl_session SET status = 'cancelled'
+       WHERE id = $1 AND requested_by_user_id = $2 AND status = 'waiting'
+         AND (($3 = 'api_key' AND api_key_id = $4) OR ($3 = 'oauth' AND oauth_client_id = $5))
+       RETURNING *`,
+      [args.session_id, principal.userId, principal.authMethod, principal.apiKeyId ?? null, principal.clientId],
     );
     return result.rowCount ? toolResult(result.rows[0]) : toolResult({ error: "Session not found or no longer waiting" }, true);
   }

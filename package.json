@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx scripts/migrate.ts",
-    "test:oauth": "tsx scripts/oauth-smoke.ts"
+    "test:oauth": "tsx scripts/oauth-smoke.ts",
+    "test:api-key": "tsx scripts/api-key-smoke.ts"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.0-rc.4",
