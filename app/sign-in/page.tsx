@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 
 export default function SignInPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -16,11 +15,13 @@ export default function SignInPage() {
     const data = new FormData(event.currentTarget);
     const email = String(data.get("email"));
     const password = String(data.get("password"));
-    const result = mode === "signin"
-      ? await authClient.signIn.email({ email, password })
-      : await authClient.signUp.email({ email, password, name: String(data.get("name")) || email.split("@")[0] });
+    const result = await authClient.signIn.email({ email, password });
     setLoading(false);
     if (result.error) return setError(result.error.message || "Authentication failed");
+    if (window.location.search) {
+      window.location.href = `/api/auth/oauth2/authorize${window.location.search}`;
+      return;
+    }
     router.push("/"); router.refresh();
   }
 
@@ -28,18 +29,15 @@ export default function SignInPage() {
     <section className="auth-card">
       <div className="brand-mark">∞</div>
       <p className="eyebrow">HITLHUB</p>
-      <h1>{mode === "signin" ? "Welcome back" : "Create your account"}</h1>
+      <h1>Welcome back</h1>
       <p className="muted">The human decision layer for AI agents.</p>
       <form onSubmit={submit}>
-        {mode === "signup" && <label>Name<input name="name" required placeholder="Carlos" /></label>}
         <label>Email<input name="email" type="email" required placeholder="you@company.com" /></label>
         <label>Password<input name="password" type="password" required minLength={8} placeholder="At least 8 characters" /></label>
         {error && <p className="error">{error}</p>}
-        <button className="primary" disabled={loading}>{loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
+        <button className="primary" disabled={loading}>{loading ? "Please wait…" : "Sign in"}</button>
       </form>
-      <button className="text-button" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
-        {mode === "signin" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-      </button>
+      <p className="signin-note">Accounts are invitation-only.</p>
     </section>
   </main>;
 }

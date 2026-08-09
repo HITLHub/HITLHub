@@ -7,4 +7,6 @@ npm-debug.log*
 *.tsbuildinfo
 AGENTS.md
 CLAUDE.md
+.agents/
+skills-lock.json
 .env*

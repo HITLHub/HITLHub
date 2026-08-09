@@ -1,4 +1,6 @@
-import { ensureHitlSchema, expireSessions, pool } from "@/lib/db";
+import { ensureHitlSchema, expireSessions, pool, resolveIntegration } from "@/lib/db";
+import { bearerChallenge, type McpPrincipal, verifyMcpRequest } from "@/lib/oauth-resource";
+import type { McpScope } from "@/lib/oauth-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,9 +49,10 @@ function toolResult(value: unknown, isError = false) {
   return { content: [{ type: "text", text: JSON.stringify(value) }], structuredContent: value, ...(isError ? { isError: true } : {}) };
 }
 
-async function callTool(name: unknown, args: Record<string, unknown>) {
+async function callTool(name: unknown, args: Record<string, unknown>, principal: McpPrincipal) {
   await ensureHitlSchema();
   await expireSessions();
+  const integration = await resolveIntegration(principal.clientId);
   if (name === "create_session") {
     const question = typeof args.question === "string" ? args.question.trim() : "";
     const options = Array.isArray(args.options) ? args.options.filter((v): v is string => typeof v === "string" && !!v.trim()) : [];
@@ -58,23 +61,37 @@ async function callTool(name: unknown, args: Record<string, unknown>) {
       return toolResult({ error: "question, at least two options, and expires_in_seconds (30-86400) are required" }, true);
     }
     const result = await pool.query(
-      `INSERT INTO hitl_session (question, options, expires_at) VALUES ($1, $2::jsonb, now() + ($3 * interval '1 second')) RETURNING *`,
-      [question, JSON.stringify(options), seconds],
+      `INSERT INTO hitl_session (integration, question, options, expires_at, oauth_client_id, requested_by_user_id)
+       VALUES ($1, $2, $3::jsonb, now() + ($4 * interval '1 second'), $5, $6)
+       RETURNING *`,
+      [integration.name, question, JSON.stringify(options), seconds, principal.clientId, principal.userId],
     );
     return toolResult(result.rows[0]);
   }
   if (name === "get_session") {
-    const result = await pool.query(`SELECT * FROM hitl_session WHERE id = $1`, [args.session_id]);
+    const result = await pool.query(`SELECT * FROM hitl_session WHERE id = $1 AND oauth_client_id = $2`, [args.session_id, principal.clientId]);
     return result.rowCount ? toolResult(result.rows[0]) : toolResult({ error: "Session not found" }, true);
   }
   if (name === "cancel_session") {
-    const result = await pool.query(`UPDATE hitl_session SET status = 'cancelled' WHERE id = $1 AND status = 'waiting' RETURNING *`, [args.session_id]);
+    const result = await pool.query(
+      `UPDATE hitl_session SET status = 'cancelled' WHERE id = $1 AND oauth_client_id = $2 AND status = 'waiting' RETURNING *`,
+      [args.session_id, principal.clientId],
+    );
     return result.rowCount ? toolResult(result.rows[0]) : toolResult({ error: "Session not found or no longer waiting" }, true);
   }
   return toolResult({ error: `Unknown tool: ${String(name)}` }, true);
 }
 
-async function handle(message: RpcRequest) {
+function requiredScope(message: RpcRequest): McpScope | undefined {
+  if (message.method !== "tools/call") return undefined;
+  const name = message.params?.name;
+  if (name === "create_session") return "hitl:create";
+  if (name === "get_session") return "hitl:read";
+  if (name === "cancel_session") return "hitl:cancel";
+  return undefined;
+}
+
+async function handle(message: RpcRequest, principal: McpPrincipal) {
   if (message.method === "initialize") {
     return rpc(message.id, {
       protocolVersion: "2025-06-18",
@@ -85,24 +102,46 @@ async function handle(message: RpcRequest) {
   if (message.method === "tools/list") return rpc(message.id, { tools });
   if (message.method === "tools/call") {
     const params = message.params ?? {};
-    return rpc(message.id, await callTool(params.name, (params.arguments ?? {}) as Record<string, unknown>));
+    return rpc(message.id, await callTool(params.name, (params.arguments ?? {}) as Record<string, unknown>, principal));
   }
   if (message.method?.startsWith("notifications/")) return new Response(null, { status: 202 });
   return Response.json({ jsonrpc: "2.0", id: message.id ?? null, error: { code: -32601, message: "Method not found" } });
 }
 
 export async function POST(request: Request) {
+  let message: RpcRequest;
   try {
-    return await handle(await request.json());
+    message = await request.json();
   } catch (error) {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: error instanceof Error ? error.message : "Internal error" } }, { status: 500 });
+  }
+
+  const scope = requiredScope(message);
+  try {
+    const principal = await verifyMcpRequest(request, scope);
+    return await handle(message, principal);
+  } catch (error) {
+    console.error("MCP OAuth verification failed", error);
+    return Response.json(
+      { jsonrpc: "2.0", id: message.id ?? null, error: { code: -32001, message: "OAuth authorization required" } },
+      {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": bearerChallenge(scope),
+          "Access-Control-Allow-Origin": "*",
+        },
+      },
+    );
   }
 }
 
 export function GET() {
-  return Response.json({ name: "HITLHub Demo MCP", status: "live", endpoint: "/mcp" });
+  return Response.json(
+    { error: "OAuth authorization required" },
+    { status: 401, headers: { "WWW-Authenticate": bearerChallenge(), "Access-Control-Allow-Origin": "*" } },
+  );
 }
 
 export function OPTIONS() {
-  return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id" } });
+  return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, Mcp-Session-Id" } });
 }

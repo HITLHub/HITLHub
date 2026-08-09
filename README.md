@@ -16,4 +16,4 @@ npm run migrate
 npm run dev
 ```
 
-Better Auth is mounted at `/api/auth/[...all]`. The remote MCP endpoint is `/mcp`.
+Better Auth is mounted at `/api/auth/[...all]`. The remote MCP endpoint is `/mcp` and requires OAuth 2.1 authorization with PKCE. OAuth protected-resource metadata is published at `/.well-known/oauth-protected-resource/mcp`.

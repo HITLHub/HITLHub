@@ -28,6 +28,8 @@ export type HitlSession = {
   expires_at: string;
   answered_at: string | null;
   answered_by: string | null;
+  oauth_client_id: string | null;
+  requested_by_user_id: string | null;
 };
 
 export async function ensureHitlSchema() {
@@ -44,8 +46,33 @@ export async function ensureHitlSchema() {
       answered_at timestamptz,
       answered_by text
     );
+    CREATE TABLE IF NOT EXISTS integration (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      oauth_client_id text UNIQUE NOT NULL,
+      name text NOT NULL,
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_used_at timestamptz NOT NULL DEFAULT now()
+    );
+    ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS oauth_client_id text;
+    ALTER TABLE hitl_session ADD COLUMN IF NOT EXISTS requested_by_user_id text;
     CREATE INDEX IF NOT EXISTS hitl_session_created_idx ON hitl_session (created_at DESC);
+    CREATE INDEX IF NOT EXISTS hitl_session_oauth_client_idx ON hitl_session (oauth_client_id, created_at DESC);
   `);
+}
+
+export async function resolveIntegration(clientId: string) {
+  await ensureHitlSchema();
+  const result = await pool.query<{ oauth_client_id: string; name: string; status: string }>(
+    `INSERT INTO integration (oauth_client_id, name)
+     VALUES ($1, $2)
+     ON CONFLICT (oauth_client_id) DO UPDATE SET last_used_at = now()
+     RETURNING oauth_client_id, name, status`,
+    [clientId, `OAuth ${clientId.slice(0, 8)}`],
+  );
+  const integration = result.rows[0];
+  if (!integration || integration.status !== "active") throw new Error("Integration is disabled");
+  return integration;
 }
 
 export async function expireSessions() {
